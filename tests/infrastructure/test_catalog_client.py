@@ -18,7 +18,12 @@ async def test_get_item_success():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
-            json={"id": "item-1", "name": "Widget", "price": "100.00", "available_qty": 5},
+            json={
+                "id": "item-1",
+                "name": "Widget",
+                "price": "100.00",
+                "available_qty": 5,
+            },
         )
 
     catalog, client = _make_client(handler)

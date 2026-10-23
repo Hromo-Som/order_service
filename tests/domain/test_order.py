@@ -30,6 +30,7 @@ def test_create_rejects_non_positive_quantity():
     errors = exc.value.errors()
     assert any(e["loc"] == ("quantity",) for e in errors)
 
+
 def test_pay_from_new():
     order = Order.create("u1", "item-1", 1, "k1")
     prev_updated = order.updated_at
