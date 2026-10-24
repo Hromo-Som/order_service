@@ -1,12 +1,23 @@
+from decimal import Decimal
+
 import pytest
 
 from src.application.usecases.create_order import CreateOrderUseCase, OrderDTO
 from src.domain.enums import OrderStatusEnum
-from src.domain.exceptions import InsufficientStockError, ItemNotFoundError
+from src.domain.exceptions import (
+    InsufficientStockError,
+    ItemNotFoundError,
+    PaymentCreationFailedError,
+)
 
 
-async def test_create_order_success(uow_factory, catalog, order_repo):
-    usecase = CreateOrderUseCase(uow_factory, catalog)
+async def test_create_order_success(uow_factory, catalog, payments, order_repo):
+    usecase = CreateOrderUseCase(
+        uow_factory,
+        catalog,
+        payments,
+        payment_callback_url="http://order-service.ns.svc:8000/api/orders/payment-callback",
+    )
     order = await usecase(
         OrderDTO(user_id="u1", item_id="item-1", quantity=2, idempotency_key="k1")
     )
@@ -17,8 +28,15 @@ async def test_create_order_success(uow_factory, catalog, order_repo):
     assert len(order_repo.all()) == 1
 
 
-async def test_create_order_is_idempotent_by_key(uow_factory, catalog, order_repo):
-    usecase = CreateOrderUseCase(uow_factory, catalog)
+async def test_create_order_is_idempotent_by_key(
+    uow_factory, catalog, payments, order_repo
+):
+    usecase = CreateOrderUseCase(
+        uow_factory,
+        catalog,
+        payments,
+        payment_callback_url="http://order-service.ns.svc:8000/api/orders/payment-callback",
+    )
     dto = OrderDTO(user_id="u1", item_id="item-1", quantity=1, idempotency_key="k1")
 
     first = await usecase(dto)
@@ -30,9 +48,14 @@ async def test_create_order_is_idempotent_by_key(uow_factory, catalog, order_rep
 
 
 async def test_create_order_different_keys_create_different_orders(
-    uow_factory, catalog, order_repo
+    uow_factory, catalog, payments, order_repo
 ):
-    usecase = CreateOrderUseCase(uow_factory, catalog)
+    usecase = CreateOrderUseCase(
+        uow_factory,
+        catalog,
+        payments,
+        payment_callback_url="http://order-service.ns.svc:8000/api/orders/payment-callback",
+    )
     o1 = await usecase(
         OrderDTO(user_id="u1", item_id="item-1", quantity=1, idempotency_key="k1")
     )
@@ -44,8 +67,13 @@ async def test_create_order_different_keys_create_different_orders(
     assert len(order_repo.all()) == 2
 
 
-async def test_create_order_insufficient_stock(uow_factory, catalog):
-    usecase = CreateOrderUseCase(uow_factory, catalog)
+async def test_create_order_insufficient_stock(uow_factory, catalog, payments):
+    usecase = CreateOrderUseCase(
+        uow_factory,
+        catalog,
+        payments,
+        payment_callback_url="http://order-service.ns.svc:8000/api/orders/payment-callback",
+    )
     with pytest.raises(InsufficientStockError) as exc:
         await usecase(
             OrderDTO(user_id="u1", item_id="item-1", quantity=999, idempotency_key="k1")
@@ -56,8 +84,13 @@ async def test_create_order_insufficient_stock(uow_factory, catalog):
     assert exc.value.available == 10
 
 
-async def test_create_order_item_not_found(uow_factory, catalog):
-    usecase = CreateOrderUseCase(uow_factory, catalog)
+async def test_create_order_item_not_found(uow_factory, catalog, payments):
+    usecase = CreateOrderUseCase(
+        uow_factory,
+        catalog,
+        payments,
+        payment_callback_url="http://order-service.ns.svc:8000/api/orders/payment-callback",
+    )
     with pytest.raises(ItemNotFoundError):
         await usecase(
             OrderDTO(user_id="u1", item_id="missing", quantity=1, idempotency_key="k1")
@@ -65,11 +98,71 @@ async def test_create_order_item_not_found(uow_factory, catalog):
 
 
 async def test_create_order_does_not_persist_on_stock_error(
-    uow_factory, catalog, order_repo
+    uow_factory, catalog, payments, order_repo
 ):
-    usecase = CreateOrderUseCase(uow_factory, catalog)
+    usecase = CreateOrderUseCase(
+        uow_factory,
+        catalog,
+        payments,
+        payment_callback_url="http://order-service.ns.svc:8000/api/orders/payment-callback",
+    )
     with pytest.raises(InsufficientStockError):
         await usecase(
             OrderDTO(user_id="u1", item_id="item-1", quantity=999, idempotency_key="k1")
         )
     assert order_repo.all() == []
+
+
+async def test_create_order_calls_payments(uow_factory, catalog, payments, order_repo):
+    usecase = CreateOrderUseCase(
+        uow_factory,
+        catalog,
+        payments,
+        payment_callback_url="http://order-service.ns.svc:8000/api/orders/payment-callback",
+    )
+    await usecase(
+        OrderDTO(user_id="u1", item_id="item-1", quantity=2, idempotency_key="k1")
+    )
+
+    assert len(payments.calls) == 1
+    call = payments.calls[0]
+    assert call["amount"] == Decimal("200.00")
+    assert call["callback_url"].startswith("http://order-service")
+    assert call["idempotency_key"].endswith(":payment")
+
+
+async def test_create_order_cancels_on_payment_failure(
+    uow_factory, catalog, payments, order_repo
+):
+    payments.set_fail(True)
+    usecase = CreateOrderUseCase(
+        uow_factory,
+        catalog,
+        payments,
+        payment_callback_url="http://x",
+    )
+
+    with pytest.raises(PaymentCreationFailedError):
+        await usecase(
+            OrderDTO(user_id="u1", item_id="item-1", quantity=1, idempotency_key="k1")
+        )
+
+    orders = order_repo.all()
+    assert len(orders) == 1
+    assert orders[0].status == OrderStatusEnum.CANCELLED
+
+
+async def test_create_order_idempotent_does_not_call_payments_twice(
+    uow_factory, catalog, payments
+):
+    usecase = CreateOrderUseCase(
+        uow_factory,
+        catalog,
+        payments,
+        payment_callback_url="http://x",
+    )
+    dto = OrderDTO(user_id="u1", item_id="item-1", quantity=1, idempotency_key="k1")
+    await usecase(dto)
+    await usecase(dto)
+
+    assert len(payments.calls) == 1

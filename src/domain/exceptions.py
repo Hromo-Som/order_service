@@ -39,3 +39,16 @@ class InvalidOrderTransitionError(DomainError):
         super().__init__(
             f"Недопустимый переход заказа {order_id}: {current} → {target}."
         )
+
+
+class PaymentCreationFailedError(DomainError):
+    def __init__(self, order_id: UUID, reason: str) -> None:
+        self.order_id = order_id
+        self.reason = reason
+        super().__init__(f"Не удалось создать платёж для заказа {order_id}: {reason}")
+
+
+class DuplicateIdempotencyKeyError(DomainError):
+    def __init__(self, idempotency_key: str) -> None:
+        self.idempotency_key = idempotency_key
+        super().__init__(f"Заказ с idempotency_key={idempotency_key!r} уже существует")

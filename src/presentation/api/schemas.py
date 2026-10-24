@@ -3,6 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from src.application.usecases.handle_payment_callback import PaymentCallbackStatus
 from src.domain.entities import Order
 from src.domain.enums import OrderStatusEnum
 
@@ -34,3 +35,11 @@ class OrderResponse(BaseModel):
             created_at=order.created_at,
             updated_at=order.updated_at,
         )
+
+
+class PaymentCallbackRequest(BaseModel):
+    payment_id: str = Field(..., min_length=1)
+    order_id: UUID
+    status: PaymentCallbackStatus
+    amount: str = Field(..., min_length=1)
+    error_message: str | None = None

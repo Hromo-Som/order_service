@@ -1,10 +1,12 @@
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.application.ports.repositories import OrderRepository
 from src.domain.entities import Order
+from src.domain.exceptions import DuplicateIdempotencyKeyError, OrderNotFoundError
 from src.infrastructure.persistence.models import OrderORM
 
 
@@ -24,7 +26,12 @@ class SQLAlchemyRepository(OrderRepository):
             updated_at=order.updated_at,
         )
         self._session.add(model)
-        await self._session.flush()
+        try:
+            await self._session.flush()
+        except IntegrityError as e:
+            if "idempotency_key" in str(e.orig):
+                raise DuplicateIdempotencyKeyError(order.idempotency_key) from e
+            raise
         return order
 
     async def get_by_id(self, order_id: UUID) -> Order | None:
@@ -34,6 +41,21 @@ class SQLAlchemyRepository(OrderRepository):
     async def get_by_idempotency_key(self, idempotency_key: str) -> Order | None:
         result = await self._session.execute(
             select(OrderORM).where(OrderORM.idempotency_key == idempotency_key)
+        )
+        model = result.scalar_one_or_none()
+        return self._to_entity(model) if model else None
+
+    async def update(self, order: Order) -> Order:
+        model = await self._session.get(OrderORM, order.id)
+        if model is None:
+            raise OrderNotFoundError(order.id)
+        model.status = order.status
+        model.updated_at = order.updated_at
+        return order
+
+    async def get_by_id_for_update(self, order_id: UUID) -> Order | None:
+        result = await self._session.execute(
+            select(OrderORM).where(OrderORM.id == order_id).with_for_update()
         )
         model = result.scalar_one_or_none()
         return self._to_entity(model) if model else None

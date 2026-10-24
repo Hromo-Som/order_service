@@ -1,16 +1,57 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
+from decimal import Decimal
 from uuid import UUID
 
+import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from src.application.ports.catalog import CatalogClient, CatalogItem
+from src.application.ports.payments import PaymentDTO, PaymentsClient
 from src.application.ports.repositories import OrderRepository
 from src.domain.entities import Order
 from src.domain.exceptions import ItemNotFoundError
+from src.fastapi import create_app
+
+
+class FakePaymentsClient(PaymentsClient):
+    def __init__(self, fail: bool = False) -> None:
+        self._fail = fail
+        self.calls: list[dict] = []
+        self._payments: dict[str, PaymentDTO] = {}
+
+    def set_fail(self, fail: bool) -> None:
+        self._fail = fail
+
+    async def create_payment(
+        self,
+        order_id: str,
+        amount: Decimal,
+        callback_url: str,
+        idempotency_key: str,
+    ) -> PaymentDTO:
+        self.calls.append(
+            {
+                "order_id": order_id,
+                "amount": amount,
+                "callback_url": callback_url,
+                "idempotency_key": idempotency_key,
+            }
+        )
+        if self._fail:
+            raise httpx.ConnectError("Payments Service unavailable")
+        dto = PaymentDTO(
+            id=f"payment-{order_id}",
+            order_id=order_id,
+            amount=str(amount),
+            status="pending",
+            idempotency_key=idempotency_key,
+        )
+        self._payments[dto.id] = dto
+        return dto
 
 
 class InMemoryOrderRepository(OrderRepository):
@@ -31,6 +72,17 @@ class InMemoryOrderRepository(OrderRepository):
             if order.idempotency_key == idempotency_key:
                 return order
         return None
+
+    async def update(self, order: Order) -> Order:
+        if order.id not in self._storage:
+            from src.domain.exceptions import OrderNotFoundError
+
+            raise OrderNotFoundError(order.id)
+        self._storage[order.id] = order
+        return order
+
+    async def get_by_id_for_update(self, order_id: UUID) -> Order | None:
+        return self._storage.get(order_id)
 
     def all(self) -> list[Order]:
         return list(self._storage.values())
@@ -54,7 +106,7 @@ class InMemoryUoWFactory:
         self._orders = orders or InMemoryOrderRepository()
 
     @asynccontextmanager
-    async def __call__(self) -> AsyncIterator[InMemoryUoWContext]:
+    async def __call__(self) -> AsyncGenerator[InMemoryUoWContext]:
         yield InMemoryUoWContext(self._orders)
 
 
@@ -93,19 +145,21 @@ def catalog() -> FakeCatalogClient:
 
 
 @pytest.fixture
-async def api_client(
-    uow_factory: InMemoryUoWFactory, catalog: FakeCatalogClient
-) -> AsyncIterator[AsyncClient]:
-    """FastAPI-клиент с подменёнными зависимостями — без БД и без Capashino.
+def payments() -> FakePaymentsClient:
+    return FakePaymentsClient()
 
-    ASGITransport не запускает lifespan, поэтому app.state задаём вручную.
-    """
-    from src.fastapi import create_app
+
+@pytest.fixture
+async def api_client(
+    uow_factory: InMemoryUoWFactory,
+    catalog: FakeCatalogClient,
+    payments: FakePaymentsClient,
+) -> AsyncIterator[AsyncClient]:
 
     app = create_app()
     app.state.uow_factory = uow_factory
     app.state.catalog_client = catalog
-
+    app.state.payments_client = payments
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client

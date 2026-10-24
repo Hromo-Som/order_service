@@ -1,4 +1,4 @@
-from pydantic import SecretStr, model_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,3 +27,13 @@ class Settings(BaseSettings):
                 url = "postgresql+asyncpg://" + url[len("postgresql://") :]
             self.database_url = url
         return self
+
+    @field_validator("payment_callback_url")
+    @classmethod
+    def _check_internal_callback(cls, v: str) -> str:
+        if "python-labs.ru" in v and ".svc" not in v:
+            raise ValueError(
+                "payment_callback_url должен быть внутренним Kubernetes-адресом "
+                "(http://<service>.<namespace>.svc:8000/...), а не внешним доменом"
+            )
+        return v
