@@ -7,6 +7,7 @@ from src.infrastructure.http.payments import HttpPaymentsClient
 
 
 async def test_create_payment_posts_correct_payload():
+    """Проверка контракта POST /api/payments."""
     captured: dict = {}
 
     def handler(request: httpx.Request) -> httpx.Response:

@@ -10,13 +10,16 @@ from src.domain.exceptions import (
     PaymentCreationFailedError,
 )
 
+CALLBACK_URL = "http://order-service.ns.svc:8000/api/orders/payment-callback"
+
 
 async def test_create_order_success(uow_factory, catalog, payments, order_repo):
+    """Успешное создание заказа."""
     usecase = CreateOrderUseCase(
         uow_factory,
         catalog,
         payments,
-        payment_callback_url="http://order-service.ns.svc:8000/api/orders/payment-callback",
+        payment_callback_url=CALLBACK_URL,
     )
     order = await usecase(
         OrderDTO(user_id="u1", item_id="item-1", quantity=2, idempotency_key="k1")
@@ -31,11 +34,12 @@ async def test_create_order_success(uow_factory, catalog, payments, order_repo):
 async def test_create_order_is_idempotent_by_key(
     uow_factory, catalog, payments, order_repo
 ):
+    """Повторный вызов с тем же ключом не создаёт второй заказ и не ходит в Catalog."""
     usecase = CreateOrderUseCase(
         uow_factory,
         catalog,
         payments,
-        payment_callback_url="http://order-service.ns.svc:8000/api/orders/payment-callback",
+        payment_callback_url=CALLBACK_URL,
     )
     dto = OrderDTO(user_id="u1", item_id="item-1", quantity=1, idempotency_key="k1")
 
@@ -50,11 +54,12 @@ async def test_create_order_is_idempotent_by_key(
 async def test_create_order_different_keys_create_different_orders(
     uow_factory, catalog, payments, order_repo
 ):
+    """Создание заказа с другим ключом создает другой заказ."""
     usecase = CreateOrderUseCase(
         uow_factory,
         catalog,
         payments,
-        payment_callback_url="http://order-service.ns.svc:8000/api/orders/payment-callback",
+        payment_callback_url=CALLBACK_URL,
     )
     o1 = await usecase(
         OrderDTO(user_id="u1", item_id="item-1", quantity=1, idempotency_key="k1")
@@ -68,11 +73,12 @@ async def test_create_order_different_keys_create_different_orders(
 
 
 async def test_create_order_insufficient_stock(uow_factory, catalog, payments):
+    """При недостаточном количестве товара выбрасывается ошибка InsufficientStockError."""
     usecase = CreateOrderUseCase(
         uow_factory,
         catalog,
         payments,
-        payment_callback_url="http://order-service.ns.svc:8000/api/orders/payment-callback",
+        payment_callback_url=CALLBACK_URL,
     )
     with pytest.raises(InsufficientStockError) as exc:
         await usecase(
@@ -85,11 +91,12 @@ async def test_create_order_insufficient_stock(uow_factory, catalog, payments):
 
 
 async def test_create_order_item_not_found(uow_factory, catalog, payments):
+    """Поиск несуществующего товара выбрасывает ошибку ItemNotFoundError."""
     usecase = CreateOrderUseCase(
         uow_factory,
         catalog,
         payments,
-        payment_callback_url="http://order-service.ns.svc:8000/api/orders/payment-callback",
+        payment_callback_url=CALLBACK_URL,
     )
     with pytest.raises(ItemNotFoundError):
         await usecase(
@@ -100,11 +107,12 @@ async def test_create_order_item_not_found(uow_factory, catalog, payments):
 async def test_create_order_does_not_persist_on_stock_error(
     uow_factory, catalog, payments, order_repo
 ):
+    """Недостаток стока — заказ не сохраняется вообще (нет NEW в БД)."""
     usecase = CreateOrderUseCase(
         uow_factory,
         catalog,
         payments,
-        payment_callback_url="http://order-service.ns.svc:8000/api/orders/payment-callback",
+        payment_callback_url=CALLBACK_URL,
     )
     with pytest.raises(InsufficientStockError):
         await usecase(
@@ -114,11 +122,12 @@ async def test_create_order_does_not_persist_on_stock_error(
 
 
 async def test_create_order_calls_payments(uow_factory, catalog, payments, order_repo):
+    """Проверяет контракт вызова Payments."""
     usecase = CreateOrderUseCase(
         uow_factory,
         catalog,
         payments,
-        payment_callback_url="http://order-service.ns.svc:8000/api/orders/payment-callback",
+        payment_callback_url=CALLBACK_URL,
     )
     await usecase(
         OrderDTO(user_id="u1", item_id="item-1", quantity=2, idempotency_key="k1")
@@ -134,6 +143,7 @@ async def test_create_order_calls_payments(uow_factory, catalog, payments, order
 async def test_create_order_cancels_on_payment_failure(
     uow_factory, catalog, payments, order_repo
 ):
+    """Ошибка Payments → заказ уже сохранён (NEW), затем переведён в CANCELLED."""
     payments.set_fail(True)
     usecase = CreateOrderUseCase(
         uow_factory,
@@ -155,6 +165,7 @@ async def test_create_order_cancels_on_payment_failure(
 async def test_create_order_idempotent_does_not_call_payments_twice(
     uow_factory, catalog, payments
 ):
+    """Fast-path идемпотентности: второй вызов не доходит до Payments."""
     usecase = CreateOrderUseCase(
         uow_factory,
         catalog,

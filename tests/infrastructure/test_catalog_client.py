@@ -6,6 +6,7 @@ from src.infrastructure.http.catalog import HttpCatalogClient
 
 
 def _make_client(handler) -> tuple[HttpCatalogClient, httpx.AsyncClient]:
+    """Собрать HttpCatalogClient с MockTransport — без реальной сети."""
     transport = httpx.MockTransport(handler)
     http_client = httpx.AsyncClient(transport=transport)
     catalog = HttpCatalogClient(
@@ -36,6 +37,8 @@ async def test_get_item_success():
 
 
 async def test_get_item_404_raises_item_not_found():
+    """404 от Catalog → доменное ItemNotFoundError, не httpx.HTTPStatusError."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(404)
 
@@ -46,6 +49,7 @@ async def test_get_item_404_raises_item_not_found():
 
 
 async def test_get_item_sends_api_key_and_correct_url():
+    """Проверка контракта запроса: путь, base_url, X-API-Key."""
     captured: dict[str, str] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -65,6 +69,8 @@ async def test_get_item_sends_api_key_and_correct_url():
 
 
 async def test_get_item_500_propagates():
+    """5xx не мапится в доменную ошибку — летит httpx.HTTPStatusError."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500)
 

@@ -9,6 +9,8 @@ logger = logging.getLogger(__name__)
 
 
 class HttpPaymentsClient(PaymentsClient):
+    """HTTP-адаптер Payments Service (Capashino API)."""
+
     def __init__(self, base_url: str, api_key: str, client: httpx.AsyncClient) -> None:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
@@ -17,6 +19,7 @@ class HttpPaymentsClient(PaymentsClient):
     async def create_payment(
         self, order_id: str, amount: Decimal, callback_url: str, idempotency_key: str
     ) -> PaymentDTO:
+        """Создать платёж."""
         payload = {
             "order_id": order_id,
             "amount": str(amount),

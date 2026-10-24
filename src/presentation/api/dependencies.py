@@ -12,18 +12,22 @@ from src.infrastructure.persistence.uow import UnitOfWork
 
 
 def get_uow_factory(request: Request) -> UnitOfWork:
+    """Фабрика UnitOfWork из app.state."""
     return request.app.state.uow_factory
 
 
 def get_catalog_client(request: Request) -> CatalogClient:
+    """Catalog-клиент из app.state (порт, не конкретный HttpCatalogClient)."""
     return request.app.state.catalog_client
 
 
 def get_payments_client(request: Request) -> PaymentsClient:
+    """Payments-клиент из app.state (порт)."""
     return request.app.state.payments_client
 
 
 def get_payment_callback_url(request: Request) -> str:
+    """URL нашего эндпоинта для callback'ов от Payments."""
     return request.app.state.settings.payment_callback_url
 
 
@@ -39,18 +43,21 @@ def get_create_order_usecase(
     payments_client: PaymentsClientDep,
     payment_callback_url: PaymentCallbackUrlDep,
 ) -> CreateOrderUseCase:
+    """Собрать CreateOrderUseCase из DI-зависимостей."""
     return CreateOrderUseCase(
         uow_factory, catalog_client, payments_client, payment_callback_url
     )
 
 
 def get_get_order_usecase(uow_factory: UnitOfWorkDep) -> GetOrderUseCase:
+    """Собрать GetOrderUseCase."""
     return GetOrderUseCase(uow_factory)
 
 
 def get_handle_payment_callback_usecase(
     uow_factory: UnitOfWorkDep,
 ) -> HandlePaymentCallbackUseCase:
+    """Собрать HandlePaymentCallbackUseCase."""
     return HandlePaymentCallbackUseCase(uow_factory)
 
 

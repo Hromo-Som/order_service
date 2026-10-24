@@ -24,6 +24,7 @@ def test_create_generates_unique_ids():
 
 
 def test_create_rejects_non_positive_quantity():
+    """quantity=0 валидируется Pydantic (gt=0) — ValidationError с loc=("quantity",)."""
     with pytest.raises(ValidationError) as exc:
         Order.create("u1", "item-1", 0, "k1")
 

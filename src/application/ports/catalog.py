@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class CatalogItem:
+    """Товар из Catalog Service."""
+
     id: str
     name: str
     price: str
@@ -11,6 +13,8 @@ class CatalogItem:
 
 
 class CatalogClient(ABC):
+    """Порт доступа к Catalog Service."""
+
     @abstractmethod
     async def get_item(self, item_id: str) -> CatalogItem:
-        """Бросает ItemNotFoundError, если товара нет в каталоге."""
+        """Получить товар по идентификатору. Бросает ItemNotFoundError, если товара нет в каталоге."""

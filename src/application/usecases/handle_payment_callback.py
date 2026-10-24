@@ -13,6 +13,8 @@ PaymentCallbackStatus = Literal["succeeded", "failed"]
 
 @dataclass(frozen=True)
 class PaymentCallbackDTO:
+    """Данные callback'а от Payments Service."""
+
     payment_id: str
     order_id: UUID
     status: PaymentCallbackStatus
@@ -21,10 +23,13 @@ class PaymentCallbackDTO:
 
 
 class HandlePaymentCallbackUseCase:
+    """Сценарий обработки callback'а от Payments Service."""
+
     def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
         self._uow_factory = uow_factory
 
     async def __call__(self, pc_dto: PaymentCallbackDTO) -> None:
+        """Обработать callback."""
         async with self._uow_factory() as uow:
             order = await uow.orders.get_by_id_for_update(pc_dto.order_id)
 

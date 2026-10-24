@@ -18,12 +18,15 @@ from src.fastapi import create_app
 
 
 class FakePaymentsClient(PaymentsClient):
+    """In-memory замена HttpPaymentsClient для use-case и API тестов."""
+
     def __init__(self, fail: bool = False) -> None:
         self._fail = fail
         self.calls: list[dict] = []
         self._payments: dict[str, PaymentDTO] = {}
 
     def set_fail(self, fail: bool) -> None:
+        """Управлять поведением между вызовами в рамках одного теста."""
         self._fail = fail
 
     async def create_payment(
@@ -85,6 +88,7 @@ class InMemoryOrderRepository(OrderRepository):
         return self._storage.get(order_id)
 
     def all(self) -> list[Order]:
+        """Все сохранённые заказы — для assertion'ов в тестах."""
         return list(self._storage.values())
 
 
@@ -111,11 +115,14 @@ class InMemoryUoWFactory:
 
 
 class FakeCatalogClient(CatalogClient):
+    """In-memory замена HttpCatalogClient."""
+
     def __init__(self, items: dict[str, CatalogItem] | None = None) -> None:
         self._items = items or {}
         self.calls: list[str] = []
 
     def set_item(self, item: CatalogItem) -> None:
+        """Добавить товар после создания фикстуры — для специфичных тестов."""
         self._items[item.id] = item
 
     async def get_item(self, item_id: str) -> CatalogItem:
@@ -137,6 +144,7 @@ def uow_factory(order_repo: InMemoryOrderRepository) -> InMemoryUoWFactory:
 
 @pytest.fixture
 def catalog() -> FakeCatalogClient:
+    """Каталог с одним товаром: item-1, price=100.00, available_qty=10."""
     client = FakeCatalogClient()
     client.set_item(
         CatalogItem(id="item-1", name="Widget", price="100.00", available_qty=10)
@@ -155,7 +163,7 @@ async def api_client(
     catalog: FakeCatalogClient,
     payments: FakePaymentsClient,
 ) -> AsyncIterator[AsyncClient]:
-
+    """HTTP-клиент к FastAPI без реального сервера и БД."""
     app = create_app()
     app.state.uow_factory = uow_factory
     app.state.catalog_client = catalog

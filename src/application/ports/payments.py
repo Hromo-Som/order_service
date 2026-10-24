@@ -8,6 +8,8 @@ PaymentStatus = Literal["pending", "succeeded", "failed"]
 
 @dataclass(frozen=True)
 class PaymentDTO:
+    """Платёж, созданный Payments Service."""
+
     id: str
     order_id: str
     amount: str
@@ -16,6 +18,8 @@ class PaymentDTO:
 
 
 class PaymentsClient(ABC):
+    """Порт доступа к Payments Service."""
+
     @abstractmethod
     async def create_payment(
         self,

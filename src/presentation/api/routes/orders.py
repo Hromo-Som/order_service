@@ -28,6 +28,7 @@ async def create_order(
     body: CreateOrderRequest,
     usecase: CreateOrderUseCaseDep,
 ) -> OrderResponse:
+    """Создать заказ."""
     try:
         order = await usecase(
             OrderDTO(
@@ -56,6 +57,7 @@ async def payment_callback(
     body: PaymentCallbackRequest,
     usecase: HandlePaymentCallbackUseCaseDep,
 ) -> dict[str, str]:
+    """Callback от Payments Service."""
     await usecase(
         PaymentCallbackDTO(
             payment_id=body.payment_id,
@@ -73,6 +75,7 @@ async def get_order(
     order_id: UUID,
     usecase: GetOrderUseCaseDep,
 ) -> OrderResponse:
+    """Получить заказ по идентификатору."""
     try:
         order = await usecase(order_id)
     except OrderNotFoundError as e:

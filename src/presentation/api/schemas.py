@@ -9,6 +9,8 @@ from src.domain.enums import OrderStatusEnum
 
 
 class CreateOrderRequest(BaseModel):
+    """Тело POST /api/orders."""
+
     user_id: str = Field(..., min_length=1, max_length=255)
     quantity: int = Field(..., gt=0)
     item_id: str = Field(..., min_length=1, max_length=255)
@@ -16,6 +18,8 @@ class CreateOrderRequest(BaseModel):
 
 
 class OrderResponse(BaseModel):
+    """Тело ответа GET /api/orders/{id} и POST /api/orders."""
+
     id: UUID
     user_id: str
     item_id: str
@@ -26,6 +30,7 @@ class OrderResponse(BaseModel):
 
     @classmethod
     def from_entity(cls, order: Order) -> OrderResponse:
+        """Собрать ответ из доменной сущности."""
         return cls(
             id=order.id,
             user_id=order.user_id,
@@ -38,6 +43,8 @@ class OrderResponse(BaseModel):
 
 
 class PaymentCallbackRequest(BaseModel):
+    """Тело POST /api/orders/payment-callback (от Payments Service)."""
+
     payment_id: str = Field(..., min_length=1)
     order_id: UUID
     status: PaymentCallbackStatus

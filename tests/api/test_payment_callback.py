@@ -1,4 +1,5 @@
 async def _create_order(api_client) -> str:
+    """Хелпер: создать заказ в статусе NEW через API, вернуть id."""
     resp = await api_client.post(
         "/api/orders",
         json={
@@ -13,6 +14,7 @@ async def _create_order(api_client) -> str:
 
 
 async def test_payment_callback_success(api_client):
+    """succeeded переводит NEW → PAID."""
     order_id = await _create_order(api_client)
 
     resp = await api_client.post(
@@ -32,6 +34,7 @@ async def test_payment_callback_success(api_client):
 
 
 async def test_payment_callback_failure(api_client):
+    """failed переводит NEW → CANCELLED."""
     order_id = await _create_order(api_client)
 
     resp = await api_client.post(
@@ -51,6 +54,7 @@ async def test_payment_callback_failure(api_client):
 
 
 async def test_payment_callback_idempotent(api_client):
+    """Повторный succeeded — 200 и тот же статус PAID (no-op)."""
     order_id = await _create_order(api_client)
     payload = {
         "payment_id": "p1",
@@ -69,6 +73,7 @@ async def test_payment_callback_idempotent(api_client):
 
 
 async def test_payment_callback_unknown_order_returns_200(api_client):
+    """Неизвестный заказ — 200, а не 404."""
     resp = await api_client.post(
         "/api/orders/payment-callback",
         json={
@@ -82,6 +87,7 @@ async def test_payment_callback_unknown_order_returns_200(api_client):
 
 
 async def test_payment_callback_invalid_uuid_422(api_client):
+    """Невалидный UUID в order_id — 422 от Pydantic, до use case."""
     resp = await api_client.post(
         "/api/orders/payment-callback",
         json={
@@ -95,6 +101,7 @@ async def test_payment_callback_invalid_uuid_422(api_client):
 
 
 async def test_create_order_returns_502_on_payment_failure(api_client, payments):
+    """Payments недоступен → 502 клиенту (не 500)."""
     payments.set_fail(True)
     resp = await api_client.post(
         "/api/orders",

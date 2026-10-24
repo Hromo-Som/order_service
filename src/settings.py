@@ -3,6 +3,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Конфигурация приложения."""
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     capashino_base_url: str = "https://capashino.dev-2.python-labs.ru"
@@ -31,6 +33,7 @@ class Settings(BaseSettings):
     @field_validator("payment_callback_url")
     @classmethod
     def _check_internal_callback(cls, v: str) -> str:
+        """Запретить внешний домен в payment_callback_url."""
         if "python-labs.ru" in v and ".svc" not in v:
             raise ValueError(
                 "payment_callback_url должен быть внутренним Kubernetes-адресом "

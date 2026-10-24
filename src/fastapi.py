@@ -20,10 +20,12 @@ logger = logging.getLogger(__name__)
 
 
 def create_app() -> FastAPI:
+    """Фабрика FastAPI-приложения — composition root."""
     settings = Settings()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        """Управление ресурсами приложения: startup и graceful shutdown."""
         engine = create_engine(settings.database_url)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
@@ -57,6 +59,7 @@ def create_app() -> FastAPI:
     async def _httpx_status(
         request: Request, exc: httpx.HTTPStatusError
     ) -> JSONResponse:
+        """Upstream вернул 4xx/5xx → 502 клиенту."""
         logger.error(
             "Upstream %s %s → %s",
             exc.request.method,
@@ -70,6 +73,7 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(httpx.RequestError)
     async def _httpx_request(request: Request, exc: httpx.RequestError) -> JSONResponse:
+        """Upstream недоступен (сеть, таймаут, DNS) → 502 клиенту."""
         logger.error(
             "Upstream unreachable: %s", exc.request.url if exc.request else "?"
         )
@@ -80,6 +84,7 @@ def create_app() -> FastAPI:
 
     @app.get("/healthz", tags=["health"])
     async def healthz():
+        """Liveness/readiness probe."""
         return {"status": "ok"}
 
     return app

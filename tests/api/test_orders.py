@@ -26,6 +26,7 @@ async def test_create_order_201(api_client):
 
 
 async def test_create_order_idempotent(api_client):
+    """Повторный POST с тем же idempotency_key — тот же id в ответе."""
     payload = {
         "user_id": "u1",
         "item_id": "item-1",
@@ -42,6 +43,7 @@ async def test_create_order_idempotent(api_client):
 
 
 async def test_create_order_insufficient_stock_400(api_client):
+    """Сток меньше запрошенного → 400."""
     response = await api_client.post(
         "/api/orders",
         json={
@@ -57,6 +59,7 @@ async def test_create_order_insufficient_stock_400(api_client):
 
 
 async def test_create_order_item_not_found_400(api_client):
+    """Товара нет в каталоге → 400."""
     response = await api_client.post(
         "/api/orders",
         json={
@@ -72,6 +75,7 @@ async def test_create_order_item_not_found_400(api_client):
 
 
 async def test_create_order_validation_422(api_client):
+    """Pydantic-валидация срабатывает до use case: пустые поля, quantity=0."""
     response = await api_client.post(
         "/api/orders",
         json={"user_id": "", "item_id": "", "quantity": 0, "idempotency_key": ""},
@@ -105,5 +109,6 @@ async def test_get_order_404(api_client):
 
 
 async def test_get_order_invalid_uuid_422(api_client):
+    """Невалидный UUID в пути — 422 от FastAPI до use case, не 404."""
     response = await api_client.get("/api/orders/not-a-uuid")
     assert response.status_code == 422

@@ -30,6 +30,8 @@ class OrderDTO(BaseModel):
 
 
 class CreateOrderUseCase:
+    """Сценарий создания заказа."""
+
     def __init__(
         self,
         uow_factory: UnitOfWorkFactory,
@@ -43,6 +45,7 @@ class CreateOrderUseCase:
         self._payments_callback_url = payment_callback_url
 
     async def __call__(self, order_dto: OrderDTO) -> Order:
+        """Создать заказ."""
         try:
             return await self._create(order_dto)
         except DuplicateIdempotencyKeyError:
@@ -55,6 +58,7 @@ class CreateOrderUseCase:
             raise
 
     async def _create(self, order_dto: OrderDTO) -> Order:
+        """Реализация сценария без обёртки идемпотентности."""
         async with self._uow_factory() as uow:
             existing = await uow.orders.get_by_idempotency_key(
                 order_dto.idempotency_key

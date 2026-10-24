@@ -10,6 +10,8 @@ from src.infrastructure.persistence.database import Base
 
 
 class OrderORM(Base):
+    """ORM-модель таблицы orders."""
+
     __tablename__ = "orders"
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
