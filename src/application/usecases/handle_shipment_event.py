@@ -52,6 +52,7 @@ class HandleShipmentEventUseCase:
                     order.status,
                     event.event_type,
                 )
+            await uow.commit()
 
     @staticmethod
     def _handle_shipped(order: Order, event: ShipmentEvent) -> None:
