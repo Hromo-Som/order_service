@@ -31,7 +31,7 @@ def create_app() -> FastAPI:
     logging.basicConfig(
         level=settings.log_level.upper(),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        force=True, 
+        force=True,
     )
 
     @asynccontextmanager

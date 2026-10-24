@@ -16,9 +16,7 @@ class Settings(BaseSettings):
     kafka_consumer_group: str = "order-service-student-hromo-som"
     outbox_poll_interval_seconds: float = 1.0
     outbox_batch_size: int = 10
-    payment_callback_url: str = (
-        "http://student-hromo-som-order-service-web.student-hromo-som-order-service.svc:8000/api/orders/payment-callback"
-    )
+    payment_callback_url: str = "http://student-hromo-som-order-service-web.student-hromo-som-order-service.svc:8000/api/orders/payment-callback"
 
     postgres_connection_string: str | None = None
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/orders"
