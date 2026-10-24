@@ -7,15 +7,17 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    log_level: str = "INFO"
+
     capashino_base_url: str = "https://capashino.dev-2.python-labs.ru"
     capashino_api_token: SecretStr = SecretStr("")
 
     kafka_bootstrap_servers: str = "kafka.kafka.svc.cluster.local:9092"
-    kafka_consumer_group: str = "order-service"
+    kafka_consumer_group: str = "order-service-student-hromo-som"
     outbox_poll_interval_seconds: float = 1.0
     outbox_batch_size: int = 10
     payment_callback_url: str = (
-        "http://order-service.order-service.svc:8000/api/orders/payment-callback"
+        "http://student-hromo-som-order-service-web.student-hromo-som-order-service.svc:8000/api/orders/payment-callback"
     )
 
     postgres_connection_string: str | None = None

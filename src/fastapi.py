@@ -28,6 +28,12 @@ def create_app() -> FastAPI:
     """Фабрика FastAPI-приложения — composition root."""
     settings = Settings()
 
+    logging.basicConfig(
+        level=settings.log_level.upper(),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        force=True, 
+    )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         """Управление ресурсами приложения: startup и graceful shutdown."""
