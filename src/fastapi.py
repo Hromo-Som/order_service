@@ -5,8 +5,13 @@ import httpx
 from fastapi.responses import JSONResponse
 
 from fastapi import FastAPI, Request, status
+from src.application.usecases.handle_shipment_event import HandleShipmentEventUseCase
+from src.domain.events import SHIPMENT_EVENTS_TOPIC
 from src.infrastructure.http.catalog import HttpCatalogClient
 from src.infrastructure.http.payments import HttpPaymentsClient
+from src.infrastructure.messaging.kafka_consumer import KafkaShipmentConsumer
+from src.infrastructure.messaging.kafka_producer import KafkaEventPublisher
+from src.infrastructure.messaging.outbox_relay import OutboxRelay
 from src.infrastructure.persistence.database import (
     Base,
     create_engine,
@@ -44,9 +49,33 @@ def create_app() -> FastAPI:
             client=app.state.http_client,
         )
 
+        publisher = KafkaEventPublisher(settings.kafka_bootstrap_servers)
+        await publisher.start()
+        app.state.publisher = publisher
+
+        relay = OutboxRelay(
+            uow_factory=app.state.uow_factory,
+            publisher=publisher,
+            poll_interval=settings.outbox_poll_interval_seconds,
+            batch_size=settings.outbox_batch_size,
+        )
+        await relay.start()
+
+        shipment_handler = HandleShipmentEventUseCase(app.state.uow_factory)
+        consumer = KafkaShipmentConsumer(
+            bootstrap_servers=settings.kafka_bootstrap_servers,
+            group_id=settings.kafka_consumer_group,
+            topic=SHIPMENT_EVENTS_TOPIC,
+            handler=shipment_handler,
+        )
+        await consumer.start()
+
         try:
             yield
         finally:
+            await consumer.stop()
+            await relay.stop()
+            await publisher.stop()
             await app.state.http_client.aclose()
             await engine.dispose()
 

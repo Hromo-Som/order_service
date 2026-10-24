@@ -1,10 +1,11 @@
 import logging
 from dataclasses import dataclass
 from typing import Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from src.application.ports.uow import UnitOfWorkFactory
 from src.domain.enums import OrderStatusEnum
+from src.domain.events import ORDER_EVENTS_TOPIC, OrderPaidEvent
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,19 @@ class HandlePaymentCallbackUseCase:
                 if order.status == OrderStatusEnum.NEW:
                     order.pay()
                     await uow.orders.update(order)
+                    paid_event = OrderPaidEvent(
+                        order_id=order.id,
+                        item_id=order.item_id,
+                        quantity=order.quantity,
+                        idempotency_key=uuid4(),
+                    )
+                    await uow.outbox.add(
+                        topic=ORDER_EVENTS_TOPIC,
+                        event_type=paid_event.event_type,
+                        key=str(order.id),
+                        payload=paid_event.to_payload(),
+                        idempotency_key=str(paid_event.idempotency_key),
+                    )
                 elif order.status in (OrderStatusEnum.PAID, OrderStatusEnum.SHIPPED):
                     logger.info(
                         "Повторный success callback: order=%s already %s",

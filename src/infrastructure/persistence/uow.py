@@ -2,7 +2,11 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from src.infrastructure.persistence.repositories import SQLAlchemyRepository
+from src.infrastructure.persistence.repositories import (
+    SQLAlchemyOutboxRepository,
+    SQLAlchemyProcessedEventsRepository,
+    SQLAlchemyRepository,
+)
 
 
 class UnitOfWork:
@@ -29,11 +33,23 @@ class _UnitOfWorkImplementation:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._orders = SQLAlchemyRepository(session)
+        self._outbox = SQLAlchemyOutboxRepository(session)
+        self._processed_events = SQLAlchemyProcessedEventsRepository(session)
 
     @property
     def orders(self) -> SQLAlchemyRepository:
         """Репозиторий заказов в текущей транзакции."""
         return self._orders
+
+    @property
+    def outbox(self) -> SQLAlchemyOutboxRepository:
+        """Outbox репозиторий в текущей транзакции."""
+        return self._outbox
+
+    @property
+    def processed_events(self) -> SQLAlchemyProcessedEventsRepository:
+        """Репозиторий обработанных событий в текущей транзакции."""
+        return self._processed_events
 
     async def commit(self) -> None:
         """Зафиксировать транзакцию."""

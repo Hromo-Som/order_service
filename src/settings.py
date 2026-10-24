@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     capashino_api_token: SecretStr = SecretStr("")
 
     kafka_bootstrap_servers: str = "kafka.kafka.svc.cluster.local:9092"
+    kafka_consumer_group: str = "order-service"
+    outbox_poll_interval_seconds: float = 1.0
+    outbox_batch_size: int = 10
     payment_callback_url: str = (
         "http://order-service.order-service.svc:8000/api/orders/payment-callback"
     )

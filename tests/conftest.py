@@ -3,18 +3,107 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from src.application.ports.catalog import CatalogClient, CatalogItem
+from src.application.ports.inbox import ProcessedEventsRepository
+from src.application.ports.outbox import OutboxEvent, OutboxRepository
 from src.application.ports.payments import PaymentDTO, PaymentsClient
 from src.application.ports.repositories import OrderRepository
 from src.domain.entities import Order
 from src.domain.exceptions import ItemNotFoundError
 from src.fastapi import create_app
+
+
+class FakeEventPublisher:
+    """In-memory EventPublisher: пишет в self.published, не в Kafka."""
+
+    def __init__(self) -> None:
+        self.published: list[dict] = []
+        self.fail_next: bool = False
+
+    async def publish(self, topic: str, key: str, payload: dict) -> None:
+        if self.fail_next:
+            self.fail_next = False
+            raise httpx.ConnectError("Kafka unavailable")
+        self.published.append({"topic": topic, "key": key, "payload": payload})
+
+
+class InMemoryOutboxRepository(OutboxRepository):
+    """In-memory замена SQLAlchemyOutboxRepository."""
+
+    def __init__(self) -> None:
+        self._storage: dict = {}
+
+    async def add(
+        self,
+        topic: str,
+        event_type: str,
+        key: str,
+        payload: dict,
+        idempotency_key: str,
+    ):
+        event_id = uuid4()
+        self._storage[event_id] = {
+            "topic": topic,
+            "event_type": event_type,
+            "key": key,
+            "payload": payload,
+            "idempotency_key": idempotency_key,
+            "published": False,
+        }
+        return event_id
+
+    async def fetch_batch(self, limit: int) -> list[OutboxEvent]:
+        result: list[OutboxEvent] = []
+        for event_id, data in self._storage.items():
+            if not data["published"]:
+                result.append(
+                    OutboxEvent(
+                        id=event_id,
+                        topic=data["topic"],
+                        event_type=data["event_type"],
+                        key=data["key"],
+                        payload=data["payload"],
+                        idempotency_key=data["idempotency_key"],
+                        created_at=__import__("datetime").datetime.now(
+                            __import__("datetime").UTC
+                        ),
+                    )
+                )
+            if len(result) >= limit:
+                break
+        return result
+
+    async def mark_published(self, event_id) -> None:
+        if event_id in self._storage:
+            self._storage[event_id]["published"] = True
+
+    def all(self) -> list[dict]:
+        return list(self._storage.values())
+
+    def unpublished(self) -> list[dict]:
+        return [d for d in self._storage.values() if not d["published"]]
+
+
+class InMemoryProcessedEventsRepository(ProcessedEventsRepository):
+    """In-memory замена SQLAlchemyProcessedEventsRepository."""
+
+    def __init__(self) -> None:
+        self._processed: set[str] = set()
+
+    async def try_mark_processed(self, dedup_key: str) -> bool:
+        if dedup_key in self._processed:
+            return False
+        self._processed.add(dedup_key)
+        return True
+
+    def all(self) -> set[str]:
+        return set(self._processed)
 
 
 class FakePaymentsClient(PaymentsClient):
@@ -68,7 +157,8 @@ class InMemoryOrderRepository(OrderRepository):
         return order
 
     async def get_by_id(self, order_id: UUID) -> Order | None:
-        return self._storage.get(order_id)
+        order = self._storage.get(order_id)
+        return order.model_copy() if order else None
 
     async def get_by_idempotency_key(self, idempotency_key: str) -> Order | None:
         for order in self._storage.values():
@@ -85,7 +175,8 @@ class InMemoryOrderRepository(OrderRepository):
         return order
 
     async def get_by_id_for_update(self, order_id: UUID) -> Order | None:
-        return self._storage.get(order_id)
+        order = self._storage.get(order_id)
+        return order.model_copy() if order else None
 
     def all(self) -> list[Order]:
         """Все сохранённые заказы — для assertion'ов в тестах."""
@@ -95,8 +186,15 @@ class InMemoryOrderRepository(OrderRepository):
 class InMemoryUoWContext:
     """Реализует UnitOfWorkContext (commit — маркер, add уже сохранил)."""
 
-    def __init__(self, orders: InMemoryOrderRepository) -> None:
+    def __init__(
+        self,
+        orders: InMemoryOrderRepository,
+        outbox: InMemoryOutboxRepository,
+        processed_events: InMemoryProcessedEventsRepository,
+    ) -> None:
         self.orders = orders
+        self.outbox = outbox
+        self.processed_events = processed_events
         self.committed = False
 
     async def commit(self) -> None:
@@ -104,14 +202,19 @@ class InMemoryUoWContext:
 
 
 class InMemoryUoWFactory:
-    """Реализует UnitOfWorkFactory через @asynccontextmanager __call__."""
-
-    def __init__(self, orders: InMemoryOrderRepository | None = None) -> None:
+    def __init__(
+        self,
+        orders: InMemoryOrderRepository | None = None,
+        outbox: InMemoryOutboxRepository | None = None,
+        processed_events: InMemoryProcessedEventsRepository | None = None,
+    ) -> None:
         self._orders = orders or InMemoryOrderRepository()
+        self._outbox = outbox or InMemoryOutboxRepository()
+        self._processed_events = processed_events or InMemoryProcessedEventsRepository()
 
     @asynccontextmanager
     async def __call__(self) -> AsyncGenerator[InMemoryUoWContext]:
-        yield InMemoryUoWContext(self._orders)
+        yield InMemoryUoWContext(self._orders, self._outbox, self._processed_events)
 
 
 class FakeCatalogClient(CatalogClient):
@@ -138,8 +241,12 @@ def order_repo() -> InMemoryOrderRepository:
 
 
 @pytest.fixture
-def uow_factory(order_repo: InMemoryOrderRepository) -> InMemoryUoWFactory:
-    return InMemoryUoWFactory(order_repo)
+def uow_factory(
+    order_repo: InMemoryOrderRepository,
+    outbox: InMemoryOutboxRepository,
+    processed_events: InMemoryProcessedEventsRepository,
+) -> InMemoryUoWFactory:
+    return InMemoryUoWFactory(order_repo, outbox, processed_events)
 
 
 @pytest.fixture
@@ -171,3 +278,18 @@ async def api_client(
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
+
+
+@pytest.fixture
+def outbox() -> InMemoryOutboxRepository:
+    return InMemoryOutboxRepository()
+
+
+@pytest.fixture
+def processed_events() -> InMemoryProcessedEventsRepository:
+    return InMemoryProcessedEventsRepository()
+
+
+@pytest.fixture
+def publisher() -> FakeEventPublisher:
+    return FakeEventPublisher()
