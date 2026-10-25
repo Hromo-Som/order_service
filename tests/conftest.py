@@ -244,10 +244,12 @@ class FakeNotificationsClient(NotificationsClient):
         self.sent: list[dict] = []
         self.fail_next: bool = False
         self.fail_all: bool = False
+        self.call_count: int = 0
 
     async def send(
         self, message: str, reference_id: str, idempotency_key: str
     ) -> NotificationDTO:
+        self.call_count += 1
         if self.fail_all or self.fail_next:
             self.fail_next = False
             raise httpx.ConnectError("Notifications Service unavailable")
