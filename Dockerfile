@@ -28,6 +28,8 @@ WORKDIR /app
 COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
 COPY --from=builder --chown=appuser:appuser /app/src ./src
 COPY --from=builder --chown=appuser:appuser /app/bin ./bin
+COPY --from=builder --chown=appuser:appuser /app/alembic.ini ./
+COPY --from=builder --chown=appuser:appuser /app/alembic ./alembic
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH=/app \
