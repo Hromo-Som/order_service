@@ -94,6 +94,7 @@ order_service/
 │   │   ├── ports/                          # Абстракции (ABC / Protocol)
 │   │   │   ├── __init__.py
 │   │   │   ├── catalog.py                  # CatalogClient, CatalogItem
+│   │   │   ├── errors.py                   # UpstreamServiceError
 │   │   │   ├── payments.py                 # PaymentsClient, PaymentDTO
 │   │   │   ├── notifications.py            # NotificationsClient, NotificationDTO
 │   │   │   ├── outbox.py                   # OutboxRepository, EventPublisher
@@ -133,6 +134,7 @@ order_service/
 │   │       ├── __init__.py
 │   │       ├── database.py                 # create_engine, create_session_factory
 │   │       ├── models.py                   # OrderORM, OutboxEventORM, ProcessedEventORM
+│   │       ├── migrations.py               # run_migrations
 │   │       ├── repositories.py             # SQLAlchemy реализация портов
 │   │       └── uow.py                      # UnitOfWork
 │   │
@@ -147,7 +149,8 @@ order_service/
 │   │           └── orders.py               # POST, GET, /payment-callback
 │   │
 │   ├── __init__.py
-│   ├── fastapi.py                          # create_app() — composition root
+│   ├── fastapi.py                          # create_app() — composition root API
+│   ├── worker.py                           # run_worker() — composition root worker
 │   └── settings.py                         # Settings (pydantic-settings)
 │
 ├── tests/                                  # Тесты (повторяют src/)
@@ -155,7 +158,8 @@ order_service/
 ├── alembic/                                # Миграции БД
 │
 ├── bin/                                    # Точки входа
-│   └── api.py                              # uvicorn launcher
+│   ├── api.py                              # uvicorn launcher
+│   └── worker.py           # worker entrypoint (relay + consumer)
 │
 ├── .dockerignore
 ├── .env.example                            # шаблон переменных (без секретов)
@@ -517,6 +521,28 @@ asyncio.run(main())
 | `payment failed` в Capashino | `PAYMENT_CALLBACK_URL` — внутренний? |
 | 1 из 3 notifications | `KAFKA_CONSUMER_GROUP` уникальный? `Retry` в логах? |
 | `order.shipped` не приходит | Consumer group уникальный? Топик `student_system-shipment.events`? |
+
+---
+
+### Процессы
+
+Сервис состоит из **двух** процессов, собираемых из одного образа:
+
+| Процесс | Команда | Назначение |
+|---|---|---|
+| **API** | `uvicorn src.fastapi:create_app --factory` | HTTP API: создание/получение заказов, payment callback |
+| **Worker** | `python bin/worker.py` | Outbox relay (публикация `order.paid` в Kafka) + Kafka consumer (`order.shipped`/`order.cancelled`) |
+
+Оба используют те же порты/адаптеры (`UnitOfWork`, `KafkaEventPublisher`, ...),
+но composition roots разные:
+- `src/fastapi.py::create_app()` — API
+- `src/worker.py::run_worker()` — worker
+
+**Почему отдельный процесс**:
+- API и relay/consumer масштабируются независимо
+- Падение worker'а (OOM, Kafka-issue) не валит HTTP
+- Мультиреплика: N API-подов + M worker-подов, `SKIP LOCKED` разводит relay,
+  consumer group разводит партиции
 
 ---
 
