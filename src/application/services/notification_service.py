@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from uuid import UUID
 
@@ -19,7 +20,7 @@ class NotificationService:
         await self._send_safe(
             order_id,
             OrderStatusEnum.NEW,
-            "Ваш заказ создан и ожидает оплаты",
+            "NEW: Ваш заказ создан и ожидает оплаты",
         )
 
     async def notify_paid(self, order_id: UUID) -> None:
@@ -27,7 +28,7 @@ class NotificationService:
         await self._send_safe(
             order_id,
             OrderStatusEnum.PAID,
-            "Ваш заказ успешно оплачен и готов к отправке",
+            "PAID: Ваш заказ успешно оплачен и готов к отправке",
         )
 
     async def notify_shipped(self, order_id: UUID) -> None:
@@ -35,7 +36,7 @@ class NotificationService:
         await self._send_safe(
             order_id,
             OrderStatusEnum.SHIPPED,
-            "Ваш заказ отправлен в доставку",
+            "SHIPPED: Ваш заказ отправлен в доставку",
         )
 
     async def notify_cancelled(self, order_id: UUID, reason: str) -> None:
@@ -43,7 +44,7 @@ class NotificationService:
         await self._send_safe(
             order_id,
             OrderStatusEnum.CANCELLED,
-            f"Ваш заказ отменен. Причина: {reason}",
+            f"CANCELLED: Ваш заказ отменен. Причина: {reason}",
         )
 
     async def _send_safe(
@@ -53,15 +54,28 @@ class NotificationService:
         message: str,
     ) -> None:
         """Отправить уведомление, проглотив ошибку."""
-        try:
-            await self._client.send(
-                message=message,
-                reference_id=str(order_id),
-                idempotency_key=build_idempotency_key(order_id, status),
-            )
-        except Exception:
-            logger.exception(
-                "Ошибка отправки %s уведомления для заказа %s",
-                status.value,
-                order_id,
-            )
+        last_exc: Exception | None = None
+
+        for attempt in range(3):
+            try:
+                await self._client.send(
+                    message=message,
+                    reference_id=str(order_id),
+                    idempotency_key=build_idempotency_key(order_id, status),
+                )
+                return
+            except Exception as e:
+                last_exc = e
+                if attempt < 2:
+                    delay = 0.5 * (2 ** attempt)
+                    logger.warning(
+                        "Повтор %s отправка уведомления для заказа %s in %.1fs "
+                        "(attempt %d, error: %s)",
+                        status.value, order_id, delay, attempt + 1, e,
+                    )
+                    await asyncio.sleep(delay)
+
+        logger.error(
+            "Ошибка отправки уведомления %s для заказа %s после 3 попыток",
+            status.value, order_id, exc_info=last_exc,
+        )
