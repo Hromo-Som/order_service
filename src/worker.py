@@ -15,7 +15,6 @@ from src.infrastructure.persistence.database import (
     create_engine,
     create_session_factory,
 )
-from src.infrastructure.persistence.migrations import run_migrations
 from src.infrastructure.persistence.uow import UnitOfWork
 from src.settings import Settings
 
@@ -33,8 +32,6 @@ async def run_worker() -> None:
     settings = Settings()
 
     logging.getLogger().setLevel(settings.log_level.upper())
-
-    await asyncio.to_thread(run_migrations, settings.database_url)
 
     engine = create_engine(settings.database_url)
     session_factory = create_session_factory(engine)
