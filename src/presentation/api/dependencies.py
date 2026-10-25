@@ -2,7 +2,9 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 from src.application.ports.catalog import CatalogClient
+from src.application.ports.notifications import NotificationsClient
 from src.application.ports.payments import PaymentsClient
+from src.application.services.notification_service import NotificationService
 from src.application.usecases.create_order import CreateOrderUseCase
 from src.application.usecases.get_order import GetOrderUseCase
 from src.application.usecases.handle_payment_callback import (
@@ -31,21 +33,46 @@ def get_payment_callback_url(request: Request) -> str:
     return request.app.state.settings.payment_callback_url
 
 
+def get_notifications_client(request: Request) -> NotificationsClient:
+    """Notifications-клиент из app.state (порт)."""
+    return request.app.state.notifications_client
+
+
+NotificationsClientDep = Annotated[
+    NotificationsClient, Depends(get_notifications_client)
+]
+
+
+def get_notification_service(
+    client: NotificationsClientDep,
+) -> NotificationService:
+    """Обернуть NotificationsClient в NotificationService."""
+    return NotificationService(client)
+
+
 CatalogClientDep = Annotated[CatalogClient, Depends(get_catalog_client)]
 UnitOfWorkDep = Annotated[UnitOfWork, Depends(get_uow_factory)]
 PaymentsClientDep = Annotated[PaymentsClient, Depends(get_payments_client)]
 PaymentCallbackUrlDep = Annotated[str, Depends(get_payment_callback_url)]
+NotificationServiceDep = Annotated[
+    NotificationService, Depends(get_notification_service)
+]
 
 
 def get_create_order_usecase(
     uow_factory: UnitOfWorkDep,
     catalog_client: CatalogClientDep,
     payments_client: PaymentsClientDep,
+    notification_service: NotificationServiceDep,
     payment_callback_url: PaymentCallbackUrlDep,
 ) -> CreateOrderUseCase:
     """Собрать CreateOrderUseCase из DI-зависимостей."""
     return CreateOrderUseCase(
-        uow_factory, catalog_client, payments_client, payment_callback_url
+        uow_factory,
+        catalog_client,
+        payments_client,
+        notification_service,
+        payment_callback_url,
     )
 
 
@@ -56,9 +83,10 @@ def get_get_order_usecase(uow_factory: UnitOfWorkDep) -> GetOrderUseCase:
 
 def get_handle_payment_callback_usecase(
     uow_factory: UnitOfWorkDep,
+    notification_service: NotificationServiceDep,
 ) -> HandlePaymentCallbackUseCase:
     """Собрать HandlePaymentCallbackUseCase."""
-    return HandlePaymentCallbackUseCase(uow_factory)
+    return HandlePaymentCallbackUseCase(uow_factory, notification_service)
 
 
 CreateOrderUseCaseDep = Annotated[CreateOrderUseCase, Depends(get_create_order_usecase)]

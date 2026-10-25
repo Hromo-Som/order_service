@@ -1,6 +1,7 @@
 import logging
 
 from src.application.ports.uow import UnitOfWorkFactory
+from src.application.services.notification_service import NotificationService
 from src.domain.entities import Order
 from src.domain.enums import OrderStatusEnum
 from src.domain.events import ShipmentEvent
@@ -12,8 +13,11 @@ logger = logging.getLogger(__name__)
 class HandleShipmentEventUseCase:
     """Применяет order.shipped / order.cancelled к заказу."""
 
-    def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
+    def __init__(
+        self, uow_factory: UnitOfWorkFactory, notification_service: NotificationService
+    ) -> None:
         self._uow_factory = uow_factory
+        self._notifications = notification_service
 
     async def __call__(self, event: ShipmentEvent) -> None:
         async with self._uow_factory() as uow:
@@ -53,6 +57,17 @@ class HandleShipmentEventUseCase:
                     event.event_type,
                 )
             await uow.commit()
+
+        if previous == OrderStatusEnum.PAID and order.status == OrderStatusEnum.SHIPPED:
+            await self._notifications.notify_shipped(order.id)
+        elif (
+            order.status == OrderStatusEnum.CANCELLED
+            and previous != OrderStatusEnum.CANCELLED
+        ):
+            await self._notifications.notify_cancelled(
+                order.id,
+                reason=event.reason or "Отменено отправкой",
+            )
 
     @staticmethod
     def _handle_shipped(order: Order, event: ShipmentEvent) -> None:

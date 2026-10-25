@@ -7,11 +7,14 @@ from src.application.usecases.get_order import GetOrderUseCase
 from src.domain.exceptions import OrderNotFoundError
 
 
-async def test_get_order_returns_created(uow_factory, catalog, payments):
+async def test_get_order_returns_created(
+    uow_factory, catalog, payments, notification_service
+):
     created = await CreateOrderUseCase(
         uow_factory,
         catalog,
         payments,
+        notification_service,
         payment_callback_url="http://order-service.ns.svc:8000/api/orders/payment-callback",
     )(OrderDTO(user_id="u1", item_id="item-1", quantity=1, idempotency_key="k1"))
 

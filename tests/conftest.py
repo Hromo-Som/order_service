@@ -11,9 +11,11 @@ from httpx import ASGITransport, AsyncClient
 
 from src.application.ports.catalog import CatalogClient, CatalogItem
 from src.application.ports.inbox import ProcessedEventsRepository
+from src.application.ports.notifications import NotificationDTO, NotificationsClient
 from src.application.ports.outbox import OutboxEvent, OutboxRepository
 from src.application.ports.payments import PaymentDTO, PaymentsClient
 from src.application.ports.repositories import OrderRepository
+from src.application.services.notification_service import NotificationService
 from src.domain.entities import Order
 from src.domain.exceptions import ItemNotFoundError
 from src.fastapi import create_app
@@ -235,6 +237,40 @@ class FakeCatalogClient(CatalogClient):
         return self._items[item_id]
 
 
+class FakeNotificationsClient(NotificationsClient):
+    """In-memory Notifications для assertion'ов."""
+
+    def __init__(self) -> None:
+        self.sent: list[dict] = []
+        self.fail_next: bool = False
+        self.fail_all: bool = False
+
+    async def send(
+        self, message: str, reference_id: str, idempotency_key: str
+    ) -> NotificationDTO:
+        if self.fail_all or self.fail_next:
+            self.fail_next = False
+            raise httpx.ConnectError("Notifications Service unavailable")
+        dto = NotificationDTO(
+            id=f"notif-{len(self.sent) + 1}",
+            reference_id=reference_id,
+            message=message,
+            created_at="2026-10-24T00:00:00Z",
+        )
+        self.sent.append(
+            {
+                "message": message,
+                "reference_id": reference_id,
+                "idempotency_key": idempotency_key,
+            }
+        )
+        return dto
+
+    def by_status(self, status: str) -> list[dict]:
+        """Уведомления конкретного статуса — по суффиксу idempotency_key."""
+        return [n for n in self.sent if n["idempotency_key"].endswith(f":{status}")]
+
+
 @pytest.fixture
 def order_repo() -> InMemoryOrderRepository:
     return InMemoryOrderRepository()
@@ -265,16 +301,31 @@ def payments() -> FakePaymentsClient:
 
 
 @pytest.fixture
+def notifications() -> FakeNotificationsClient:
+    return FakeNotificationsClient()
+
+
+@pytest.fixture
+def notification_service(
+    notifications: FakeNotificationsClient,
+) -> NotificationService:
+    """Реальный сервис поверх фейка — тестируем поведение сервиса, не мок."""
+    return NotificationService(notifications)
+
+
+@pytest.fixture
 async def api_client(
     uow_factory: InMemoryUoWFactory,
     catalog: FakeCatalogClient,
     payments: FakePaymentsClient,
+    notifications: FakeNotificationsClient,
 ) -> AsyncIterator[AsyncClient]:
     """HTTP-клиент к FastAPI без реального сервера и БД."""
     app = create_app()
     app.state.uow_factory = uow_factory
     app.state.catalog_client = catalog
     app.state.payments_client = payments
+    app.state.notifications_client = notifications
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client

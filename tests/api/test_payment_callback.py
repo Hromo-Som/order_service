@@ -113,3 +113,21 @@ async def test_create_order_returns_502_on_payment_failure(api_client, payments)
         },
     )
     assert resp.status_code == 502
+
+
+async def test_callback_sends_paid_notification_via_api(api_client, notifications):
+    order_id = await _create_order(api_client)
+    resp = await api_client.post(
+        "/api/orders/payment-callback",
+        json={
+            "payment_id": "p1",
+            "order_id": order_id,
+            "status": "succeeded",
+            "amount": "100.00",
+        },
+    )
+    assert resp.status_code == 200
+
+    paid = [n for n in notifications.sent if n["idempotency_key"].endswith(":PAID")]
+    assert len(paid) == 1
+    assert paid[0]["reference_id"] == order_id

@@ -112,3 +112,25 @@ async def test_get_order_invalid_uuid_422(api_client):
     """Невалидный UUID в пути — 422 от FastAPI до use case, не 404."""
     response = await api_client.get("/api/orders/not-a-uuid")
     assert response.status_code == 422
+
+
+async def test_create_order_sends_new_notification_via_api(api_client, notifications):
+    """Проверка, что DI в routes/orders.py подключает notification_service,
+    а не забывает его."""
+    response = await api_client.post(
+        "/api/orders",
+        json={
+            "user_id": "u1",
+            "item_id": "item-1",
+            "quantity": 1,
+            "idempotency_key": "k1",
+        },
+    )
+    assert response.status_code == 201
+    order_id = response.json()["id"]
+
+    new_notifs = [
+        n for n in notifications.sent if n["idempotency_key"].endswith(":NEW")
+    ]
+    assert len(new_notifs) == 1
+    assert new_notifs[0]["reference_id"] == order_id

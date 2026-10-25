@@ -4,6 +4,7 @@ from typing import Literal
 from uuid import UUID, uuid4
 
 from src.application.ports.uow import UnitOfWorkFactory
+from src.application.services.notification_service import NotificationService
 from src.domain.enums import OrderStatusEnum
 from src.domain.events import ORDER_EVENTS_TOPIC, OrderPaidEvent
 
@@ -26,8 +27,13 @@ class PaymentCallbackDTO:
 class HandlePaymentCallbackUseCase:
     """Сценарий обработки callback'а от Payments Service."""
 
-    def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
+    def __init__(
+        self,
+        uow_factory: UnitOfWorkFactory,
+        notification_service: NotificationService,
+    ) -> None:
         self._uow_factory = uow_factory
+        self._notifications = notification_service
 
     async def __call__(self, pc_dto: PaymentCallbackDTO) -> None:
         """Обработать callback."""
@@ -109,3 +115,14 @@ class HandlePaymentCallbackUseCase:
                     order.status,
                     pc_dto.payment_id,
                 )
+
+        if previous == OrderStatusEnum.NEW and order.status == OrderStatusEnum.PAID:
+            await self._notifications.notify_paid(order.id)
+        elif (
+            previous == OrderStatusEnum.NEW
+            and order.status == OrderStatusEnum.CANCELLED
+        ):
+            await self._notifications.notify_cancelled(
+                order.id,
+                reason=pc_dto.error_message or "Ошибка оплаты",
+            )

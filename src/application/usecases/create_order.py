@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from src.application.ports.catalog import CatalogClient
 from src.application.ports.payments import PaymentsClient
 from src.application.ports.uow import UnitOfWorkFactory
+from src.application.services.notification_service import NotificationService
 from src.domain.entities import Order
 from src.domain.enums import OrderStatusEnum
 from src.domain.exceptions import (
@@ -37,11 +38,13 @@ class CreateOrderUseCase:
         uow_factory: UnitOfWorkFactory,
         catalog_client: CatalogClient,
         payments_client: PaymentsClient,
+        notification_service: NotificationService,
         payment_callback_url: str,
     ) -> None:
         self._uow_factory = uow_factory
         self._catalog = catalog_client
         self._payments = payments_client
+        self._notifications = notification_service
         self._payments_callback_url = payment_callback_url
 
     async def __call__(self, order_dto: OrderDTO) -> Order:
@@ -82,6 +85,8 @@ class CreateOrderUseCase:
             await uow.orders.add(order)
             await uow.commit()
 
+        await self._notifications.notify_new(order_id=order.id)
+
         amount = (Decimal(item.price) * order.quantity).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
@@ -99,13 +104,12 @@ class CreateOrderUseCase:
                 if fresh is not None and fresh.status == OrderStatusEnum.NEW:
                     fresh.cancel()
                     await uow.orders.update(fresh)
-                else:
-                    logger.info(
-                        "Платёж упал с ошибкой, но заказ %s уже в статусе %s — не отменяем",
-                        order.id,
-                        fresh.status if fresh else "unknown",
-                    )
                 await uow.commit()
+
+            await self._notifications.notify_cancelled(
+                order_id=order.id,
+                reason=str(e),
+            )
             raise PaymentCreationFailedError(order.id, str(e)) from e
 
         return order
