@@ -64,18 +64,24 @@ class NotificationService:
                     idempotency_key=build_idempotency_key(order_id, status),
                 )
                 return
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 last_exc = e
                 if attempt < 2:
-                    delay = 0.5 * (2 ** attempt)
+                    delay = 0.5 * (2**attempt)
                     logger.warning(
                         "Повтор %s отправка уведомления для заказа %s in %.1fs "
                         "(attempt %d, error: %s)",
-                        status.value, order_id, delay, attempt + 1, e,
+                        status.value,
+                        order_id,
+                        delay,
+                        attempt + 1,
+                        e,
                     )
                     await asyncio.sleep(delay)
 
         logger.error(
             "Ошибка отправки уведомления %s для заказа %s после 3 попыток",
-            status.value, order_id, exc_info=last_exc,
+            status.value,
+            order_id,
+            exc_info=last_exc,
         )
