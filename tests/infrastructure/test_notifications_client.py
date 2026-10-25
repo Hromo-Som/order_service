@@ -3,6 +3,7 @@ import json
 import httpx
 import pytest
 
+from src.application.ports.errors import UpstreamServiceError
 from src.infrastructure.http.notifications import HttpNotificationsClient
 
 
@@ -53,7 +54,7 @@ async def test_send_raises_on_4xx():
 
     client, http_client = _make_client(handler)
     async with http_client:
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(UpstreamServiceError):
             await client.send("hello", "o1", "key")
 
 
@@ -63,7 +64,7 @@ async def test_send_raises_on_5xx():
 
     client, http_client = _make_client(handler)
     async with http_client:
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(UpstreamServiceError):
             await client.send("hello", "o1", "key")
 
 

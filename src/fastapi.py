@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from alembic import command
 from fastapi import FastAPI, Request, status
+from src.application.ports.errors import UpstreamServiceError
 from src.application.services.notification_service import NotificationService
 from src.application.usecases.handle_shipment_event import HandleShipmentEventUseCase
 from src.domain.events import SHIPMENT_EVENTS_TOPIC
@@ -114,31 +115,14 @@ def create_app() -> FastAPI:
 
     app.include_router(orders.router)
 
-    @app.exception_handler(httpx.HTTPStatusError)
-    async def _httpx_status(
-        request: Request, exc: httpx.HTTPStatusError
+    @app.exception_handler(UpstreamServiceError)
+    async def _upstream_error(
+        request: Request, exc: UpstreamServiceError
     ) -> JSONResponse:
-        """Upstream вернул 4xx/5xx → 502 клиенту."""
-        logger.error(
-            "Upstream %s %s → %s",
-            exc.request.method,
-            exc.request.url,
-            exc.response.status_code,
-        )
+        logger.error("Upstream %s unreachable: %s", exc.service_name, exc.reason)
         return JSONResponse(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            content={"detail": "Внешний сервис вернул ошибку"},
-        )
-
-    @app.exception_handler(httpx.RequestError)
-    async def _httpx_request(request: Request, exc: httpx.RequestError) -> JSONResponse:
-        """Upstream недоступен (сеть, таймаут, DNS) → 502 клиенту."""
-        logger.error(
-            "Upstream unreachable: %s", exc.request.url if exc.request else "?"
-        )
-        return JSONResponse(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            content={"detail": "Внешний сервис недоступен"},
+            content={"detail": f"Сервис {exc.service_name} недоступен"},
         )
 
     @app.get("/healthz", tags=["health"])

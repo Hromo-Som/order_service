@@ -1,6 +1,7 @@
 import httpx
 import pytest
 
+from src.application.ports.errors import UpstreamServiceError
 from src.domain.exceptions import ItemNotFoundError
 from src.infrastructure.http.catalog import HttpCatalogClient
 
@@ -69,12 +70,12 @@ async def test_get_item_sends_api_key_and_correct_url():
 
 
 async def test_get_item_500_propagates():
-    """5xx не мапится в доменную ошибку — летит httpx.HTTPStatusError."""
+    """5xx не мапится в доменную ошибку — летит UpstreamServiceError."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500)
 
     catalog, client = _make_client(handler)
     async with client:
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(UpstreamServiceError):
             await catalog.get_item("item-1")

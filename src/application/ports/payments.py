@@ -28,4 +28,4 @@ class PaymentsClient(ABC):
         callback_url: str,
         idempotency_key: str,
     ) -> PaymentDTO:
-        """Создать платёж. Бросает httpx.HTTPError при ошибке внешнего сервиса."""
+        """Создать платёж. Бросает UpstreamServiceError при ошибке внешнего сервиса."""

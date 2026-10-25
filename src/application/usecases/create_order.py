@@ -1,10 +1,10 @@
 import logging
 from decimal import ROUND_HALF_UP, Decimal
 
-import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.application.ports.catalog import CatalogClient
+from src.application.ports.errors import UpstreamServiceError
 from src.application.ports.payments import PaymentsClient
 from src.application.ports.uow import UnitOfWorkFactory
 from src.application.services.notification_service import NotificationService
@@ -97,7 +97,7 @@ class CreateOrderUseCase:
                 callback_url=self._payments_callback_url,
                 idempotency_key=f"{order.id}:payment",
             )
-        except httpx.HTTPError as e:
+        except UpstreamServiceError as e:
             logger.exception("Ошибка создания платежа для заказа %s — отмена", order.id)
             async with self._uow_factory() as uow:
                 fresh = await uow.orders.get_by_id_for_update(order.id)

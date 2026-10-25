@@ -3,6 +3,7 @@ from decimal import Decimal
 
 import httpx
 
+from src.application.ports.errors import UpstreamServiceError
 from src.application.ports.payments import PaymentDTO, PaymentsClient
 
 logger = logging.getLogger(__name__)
@@ -27,17 +28,21 @@ class HttpPaymentsClient(PaymentsClient):
             "idempotency_key": idempotency_key,
         }
         logger.info(
-            "Creating payment: order_id=%s amount=%s callback=%s",
+            "Создание payment: order_id=%s amount=%s callback=%s",
             order_id,
             payload["amount"],
             callback_url,
         )
 
-        resp = await self._client.post(
-            f"{self._base_url}/api/payments",
-            headers={"X-API-Key": self._api_key},
-            json=payload,
-        )
+        try:
+            resp = await self._client.post(
+                f"{self._base_url}/api/payments",
+                headers={"X-API-Key": self._api_key},
+                json=payload,
+            )
+        except httpx.RequestError as e:
+            logger.exception("Payments недоступен: order_id=%s", order_id)
+            raise UpstreamServiceError("payments", f"transport: {e}") from e
 
         if resp.status_code >= httpx.codes.BAD_REQUEST:
             logger.error(
@@ -45,8 +50,9 @@ class HttpPaymentsClient(PaymentsClient):
                 resp.status_code,
                 resp.text[:500],
             )
-
-        resp.raise_for_status()
+            raise UpstreamServiceError(
+                "payments", f"HTTP {resp.status_code}: {resp.text[:200]}"
+            )
 
         data = resp.json()
         return PaymentDTO(

@@ -2,6 +2,7 @@ import logging
 
 import httpx
 
+from src.application.ports.errors import UpstreamServiceError
 from src.application.ports.notifications import NotificationDTO, NotificationsClient
 
 logger = logging.getLogger(__name__)
@@ -31,18 +32,22 @@ class HttpNotificationsClient(NotificationsClient):
             idempotency_key,
         )
 
-        resp = await self._client.post(
-            url=f"{self._base_url}/api/notifications",
-            headers={"X-API-Key": self._api_key},
-            json=payload,
-        )
+        try:
+            resp = await self._client.post(
+                url=f"{self._base_url}/api/notifications",
+                headers={"X-API-Key": self._api_key},
+                json=payload,
+            )
+        except httpx.RequestError as e:
+            raise UpstreamServiceError("notifications", f"transport: {e}") from e
 
         if resp.status_code >= httpx.codes.BAD_REQUEST:
             logger.error(
                 "Ошибка отправки уведомления: %s %s", resp.status_code, resp.text[:500]
             )
-
-        resp.raise_for_status()
+            raise UpstreamServiceError(
+                "notifications", f"HTTP {resp.status_code}: {resp.text[:200]}"
+            )
 
         data = resp.json()
 

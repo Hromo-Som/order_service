@@ -10,6 +10,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from src.application.ports.catalog import CatalogClient, CatalogItem
+from src.application.ports.errors import UpstreamServiceError
 from src.application.ports.inbox import ProcessedEventsRepository
 from src.application.ports.notifications import NotificationDTO, NotificationsClient
 from src.application.ports.outbox import OutboxEvent, OutboxRepository
@@ -136,7 +137,7 @@ class FakePaymentsClient(PaymentsClient):
             }
         )
         if self._fail:
-            raise httpx.ConnectError("Payments Service unavailable")
+            raise UpstreamServiceError("payments", "simulated failure")
         dto = PaymentDTO(
             id=f"payment-{order_id}",
             order_id=order_id,
@@ -252,7 +253,7 @@ class FakeNotificationsClient(NotificationsClient):
         self.call_count += 1
         if self.fail_all or self.fail_next:
             self.fail_next = False
-            raise httpx.ConnectError("Notifications Service unavailable")
+            raise UpstreamServiceError("notifications", "simulated failure")
         dto = NotificationDTO(
             id=f"notif-{len(self.sent) + 1}",
             reference_id=reference_id,
