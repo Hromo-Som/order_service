@@ -34,8 +34,8 @@ jobs:
         EVENTS_PROVIDER_BASE_URL: http://test-provider.local/api
         CAPASHINO_BASE_URL: http://test-capashino.local
       run: |
-        uv run ruff format --check src/ tests/
-        uv run ruff check src/ tests/
+        uv run ruff format --check src/ tests/ bin/
+        uv run ruff check src/ tests/ bin/
         uv run pytest -v --tb=short
 
   build:
